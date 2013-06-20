@@ -1,0 +1,65 @@
+<html>
+<body>
+    <p>Hello</p>
+    <div id="errors">
+    </div>
+
+
+    <script>
+        var graph = {};
+        var req = new XMLHttpRequest();
+
+        window.onerror = function(msg, url, line) {
+            msg = 'Error at line ' + line + ': ' + msg + ' - ' + url;
+            document.getElementById('errors').innerHTML += msg;
+        }
+
+        var print = function(msg) {
+            document.getElementById('errors').innerHTML += msg + '<br>';
+        }
+
+        var parcours = function() {
+            var start = graph['2390'];
+            var q = [start];
+
+            while(q.length > 0) {
+                node = q.shift();
+
+                print('Current station : ' + node.name);
+                //console.log('Edges : ');
+
+                node.edges.forEach( function(edge) {
+                    //console.log(edge);
+                    if(!graph[edge.dest].visited) {
+                        if(edge.type == "1" && edge.line == "6") {
+                            q.push(graph[edge.dest]);
+                        }
+                    }
+                });
+
+                node.visited = 1;
+            }
+        }
+
+        print('Loading graph...');
+        req.open('GET', 'graph-mini.json');
+        req.onreadystatechange = function(a) {
+            if( req.readyState == 4 ) {
+                if( req.status == 200) {
+                    print('Parsing graph...');
+                    graph = eval( req.responseText );
+                    print('Graph loaded');
+                    parcours();
+                }
+                else {
+                    console.log(a);
+                    throw "Error while loading graph";
+                }
+            }
+        }
+        req.send(null);
+
+
+    </script>
+</body>
+</html>

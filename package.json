@@ -1,0 +1,14 @@
+{
+	"name": "Paris Transports Web",
+	"version": "0.0.1",
+	"private": true,
+	"dependencies": {
+		//"requirejs": "latest",
+		//"mongodb": "1.2.8",
+		//"underscore": "latest",
+		//"backbone": "latest",
+		//"amdefine": "latest",
+		"express": "latest"
+	}
+	/* export NODE_PATH=`pwd`/public/js */
+}
