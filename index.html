@@ -1,10 +1,23 @@
 <html>
-<body>
+<body style="padding: 3em;">
     <p>Hello</p>
+    <hr>
+    <form>
+        <p>
+            <label for="start">Start</label>
+            <input id="start" name="start" value="Picpus">
+        </p>
+        <p>
+            <label for="end">End</label>
+            <input id="end" name="end" value="Bel-Air">
+        </p>
+        <button type="button" id="find">Find</button>
+    </form>
+    <hr>
     <div id="errors">
     </div>
 
-
+    <script src="lib/binaryheap.js"></script>
     <script>
         var graph = {};
         var req = new XMLHttpRequest();
@@ -18,6 +31,27 @@
             document.getElementById('errors').innerHTML += msg + '<br>';
         }
 
+        var loadGraph = function(callback_success) {
+            print('Loading graph...');
+            req.open('GET', 'graph_ok.json');
+            req.onreadystatechange = function(a) {
+                if( req.readyState == 4 ) {
+                    if( req.status == 200) {
+                        print('Parsing graph...');
+                        graph = eval( '(' + req.responseText + ')');
+                        print('Graph loaded');
+                        callback_success();
+                    }
+                    else {
+                        console.log(a);
+                        throw "Error while loading graph";
+                    }
+                }
+            }
+            req.send(null);
+        }
+    </script>
+    <script>
         var parcours = function() {
             var start = graph['2390'];
             var q = [start];
@@ -41,25 +75,177 @@
             }
         }
 
-        print('Loading graph...');
-        req.open('GET', 'graph-mini.json');
-        req.onreadystatechange = function(a) {
-            if( req.readyState == 4 ) {
-                if( req.status == 200) {
-                    print('Parsing graph...');
-                    graph = eval( req.responseText );
-                    print('Graph loaded');
-                    parcours();
+        var findNodes = function(start_name, end_name) {
+            var start_node_id = null;
+            var end_node_id = null;
+
+            for(var node_id in graph) {
+                var node = graph[node_id];
+                if(node.name == start_name) {
+                    start_node_id = node_id;
                 }
-                else {
-                    console.log(a);
-                    throw "Error while loading graph";
+                if(node.name == end_name) {
+                    end_node_id = node_id;
                 }
+            } 
+
+            if( start_node_id && end_node_id ) {
+                return {start: start_node_id, end: end_node_id};
+            }
+            else {
+                if( !start_node_id) {
+                    print('start not found');
+                }
+                if( !end_node_id)
+                    print('end not found');
+
+                return false;
+            }       
+        }
+        
+
+        var each = function(obj, iterator, context) {
+            for(var key in Object.keys(obj)) {
+                iterator.call(context, obj[key], key, obj);
             }
         }
-        req.send(null);
+/*
+        var find = function(obj, iterator, context) {
+            var results = [];
+            each(obj, function(value, index, list) {
+                if( iterator.call(context, value, index, list )) {
+                    results.push(value)
+                    return true;
+                }
+            });
+            return results;
+        }
+
+        var map = function(obj, iterator, context) {
+            var results = [];
+            each(obj, function(value, index, list) {
+                results.push(iterator.call(context, value, index, list);
+            });
+            return results;
+        }
+*/
 
 
+
+
+
+
+        var find_min = function(graph, nodes_processed, dist) {
+            var min = 10000;
+            var min_id = -1;
+
+            for(var key in Object.keys(graph)) {
+                if( nodes_processed[key] == 1)
+                    continue;
+                if( dist[key] < min ) {
+                    min = dist[key];
+                    min_id = key;
+                }
+            }
+
+            return min_id;
+        }
+        
+
+        var dijkstra = function(graph, start_id, end_id) {
+            var dist = {};
+            var previous = {};
+            var nodes_processed = {};
+
+            dist[start_id] = 0;
+
+            var u_id = -1;
+            var Q = new BinaryHeap(function(node) { return node.dist; });
+            for(var id in Object.keys(graph)) {
+                if( id != start_id )
+                    Q.push( {id: id, dist: 10000} );
+                else
+                    Q.push( {id: start_id, dist: 0 });
+            }
+
+            console.log('First element in Q: ', Q[0]);
+
+            var date_start = new Date();
+            console.log('Dijkstra start: ')
+            console.log(date_start);
+            
+
+            while( Q.size > 0 ) {
+                //find min
+                u = Q.pop()
+                u_id = u.id;
+                dist[u_id] = u.dist;
+
+                //nodes_processed[u_id] = 1;
+                //console.log('Station la plus proche non visite: ' + graph[u_id].name +', distance: ' + dist[u_id]);
+                
+                //end if end found or if all remaining nodes unreachable
+                if(u_id == end_id) break;
+                
+                //relax
+                graph[u_id].edges.forEach(function(edge) {
+                    if( dist[edge.dest] === undefined || ( dist[edge.dest] > dist[u_id] + edge.dur ) ) {
+                        /*
+                        console.log(graph[start_id].name + '--' + dist[edge.dest] + '-->' 
+                            + graph[edge.dest].name + ' > ' + graph[start_id].name 
+                            + '--' + dist[u_id] + '-->' + graph[u_id].name + '--' + edge.dur + '-->' + graph[edge.dest].name);
+                        console.log(' ' + graph[start_id].name + ' -> ' + graph[edge.dest].name + ' = ' + (dist[u_id] + edge.dur));
+                        */
+                        dist[edge.dest] = dist[u_id] + edge.dur;
+                        previous[edge.dest] = u_id;
+                        Q.decreaseKey(edge.dest, dist[edge.dest]);
+                    }
+                });
+            }
+
+            var date_end = new Date()
+            print('Duree: ' + (date_end.getTime() - date_start.getTime())/1000);
+
+            print('Shortest path : ' + dist[end_id]);
+            
+            //create path
+            var path = [end_id];
+            var prev = end_id;
+            while(true) {
+                prev = previous[prev];
+                if(!prev) break;
+                path.push(prev);
+            }
+
+            //display path
+            var disp = '';
+            path.reverse();
+            path.forEach( function(node_id, index) {
+                if(index > 0) disp += '-->';
+                disp += graph[node_id].name
+            });
+            print(disp);
+        }
+
+        var findPath = function() {
+            var start_name   = document.getElementById('start').value;
+            var end_name     = document.getElementById('end').value;
+            var start_end_nodes  = {};
+
+            console.log('Looking for ' + start_name + ' and ' + end_name + ' in graph...');
+            if(start_end_nodes = findNodes(start_name, end_name))
+                dijkstra(graph, start_end_nodes.start, start_end_nodes.end);
+
+        }
+
+        var setListeners = function() {
+            var button = document.getElementById('find');
+            button.addEventListener('click', findPath);
+        }
+
+        setListeners();
+
+        loadGraph(function() {});
     </script>
 </body>
 </html>
