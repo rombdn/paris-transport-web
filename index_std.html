@@ -139,14 +139,14 @@
             var min = 10000;
             var min_id = -1;
 
-            for(var key in Object.keys(graph)) {
-                if( nodes_processed[key] == 1)
-                    continue;
-                if( dist[key] < min ) {
-                    min = dist[key];
-                    min_id = key;
+            Object.keys(graph).forEach( function(key) {
+                if( nodes_processed[key] != 1) {
+                    if( dist[key] < min ) {
+                        min = dist[key];
+                        min_id = key;
+                    }
                 }
-            }
+            });
 
             return min_id;
         }
@@ -155,12 +155,11 @@
         var dijkstra = function(graph, start_id, end_id) {
             var dist = {};
             var previous = {};
-            var lines = {};
+            var nodes_processed = {};
 
             dist[start_id] = 0;
 
             var u_id = -1;
-
             var Q = new BinaryHeap(
                 function(node) { return node.dist; },
                 function(node) { return node.id; },
@@ -186,59 +185,26 @@
             console.log(date_start);
             
 
-            while( Q.size() > 0 ) {
+            while(true) {
                 //find min
-                u = Q.pop();
-                //console.log('Popped node :');
-                //console.log(u);
-                u_id = u.id;
-                //dist[u_id] = u.dist; //in init?
-
-                //nodes_processed[u_id] = 1;
+                u_id = find_min(graph, nodes_processed, dist);
+                nodes_processed[u_id] = 1;
                 //console.log('Station la plus proche non visite: ' + graph[u_id].name +', distance: ' + dist[u_id]);
                 
                 //end if end found or if all remaining nodes unreachable
-                if(u_id == end_id) break;
+                if(u_id == end_id || u_id == -1) break;
                 
                 //relax
                 graph[u_id].edges.forEach(function(edge) {
-                    if( previous[u_id] 
-                        && previous[u_id].line != edge.line
-                        && edge.type != 4) { 
-                        //console.log('Correspondance!');
-                        //console.log('Edge dest id: ', edge.dest, ', Prev line :', previous[u_id].line, ', Edge line: ', edge.line, ', Edge type: ', edge.type);
-                        delta = 400; 
-                    }
-                    else { delta = 0; }
-
-                    //SHOULD NOT HAPPEN, MEANS AN EDGE REFER TO AN UNKNOWN NODE (SEE init ABOVE)
-                    if(dist[edge.dest] === undefined) {
-                        //console.log('WARNING, dist for ' + edge.dest + ' undefined');
-                        graph[edge.dest] = {
-                            name: 'unknown',
-                            edges: []
-                        };
-                        Q.push( {id: edge.dest, dist: 10000} );
-                        dist[edge.dest] = 10000;
-                    }
-                    
-                    else if( dist[edge.dest] > dist[u_id] + edge.dur + delta) {
+                    if( dist[edge.dest] === undefined || ( dist[edge.dest] > dist[u_id] + edge.dur ) ) {
                         /*
                         console.log(graph[start_id].name + '--' + dist[edge.dest] + '-->' 
                             + graph[edge.dest].name + ' > ' + graph[start_id].name 
                             + '--' + dist[u_id] + '-->' + graph[u_id].name + '--' + edge.dur + '-->' + graph[edge.dest].name);
                         console.log(' ' + graph[start_id].name + ' -> ' + graph[edge.dest].name + ' = ' + (dist[u_id] + edge.dur));
                         */
-
-                        //if( edge.line != )
-
-                        dist[edge.dest]             = dist[u_id] + edge.dur + delta;
-                        previous[edge.dest]         = {};
-                        previous[edge.dest].node_id = u_id;
-                        previous[edge.dest].line    = edge.line;
-                        previous[edge.dest].type    = edge.type;
-                        
-                        Q.decreaseKey(edge.dest, dist[edge.dest]);
+                        dist[edge.dest] = dist[u_id] + edge.dur;
+                        previous[edge.dest] = u_id;
                     }
                 });
             }
@@ -249,38 +215,20 @@
             print('Shortest path : ' + dist[end_id]);
             
             //create path
-            var path = [{node_id: end_id, line: -1}];
-            var prev = {node_id: end_id, line: -1};
+            var path = [end_id];
+            var prev = end_id;
             while(true) {
-                prev = previous[prev.node_id];
-                //console.log(prev);
+                prev = previous[prev];
                 if(!prev) break;
                 path.push(prev);
             }
 
             //display path
             var disp = '';
-            var last_line = null;
             path.reverse();
-            path.forEach( function(node, index) {
-                if(node.line !== last_line) {
-                    if(last_line !== null) {
-                        disp += ' => ' + graph[node.node_id].name + ' (' + node.node_id + ')<br>';
-                        if(node.line != -1) disp += 'Correspondance<br>';
-                    }
-                    if(node.line != -1 && node.type != 4) {
-                        disp += 'Line: ' + node.line + ', ' + graph[node.node_id].name + ' (' + node.node_id + ')';
-                    }
-                    if(node.type == 4) {
-                        disp += 'A pattes, ' + graph[node.node_id].name + ' (' + node.node_id + ')';
-                    }
-                }
-
-                last_line = node.line;
-                //if(index > 0) disp += '-->';
-                //disp += graph[node.node_id].name + ' (' + node.node_id + ')';
-                //if(node.type == 4) { disp += ', a pattes'; }
-                //else if(node.line) { disp += ', line: ' + node.line; }
+            path.forEach( function(node_id, index) {
+                if(index > 0) disp += '-->';
+                disp += graph[node_id].name
             });
             print(disp);
         }
