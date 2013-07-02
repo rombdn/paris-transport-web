@@ -1,11 +1,19 @@
 <html>
+<head>
+    <link rel="stylesheet" href="lib/leaflet/leaflet.css">
+    <style>
+        #map {
+            height: 180px;
+        }
+    </style>
+</head>
 <body style="padding: 3em;">
     <p>Hello</p>
     <hr>
     <form>
         <p>
             <label for="start">Start</label>
-            <input id="start" name="start" value="Picpus">
+            <input id="start" name="start" value="EGLISE D'AUTEUIL">
         </p>
         <p>
             <label for="end">End</label>
@@ -14,10 +22,14 @@
         <button type="button" id="find">Find</button>
     </form>
     <hr>
-    <div id="errors">
-    </div>
+    <div id="errors"></div>
+    <hr>
+    <div id="map" class="map"></div>
 
     <script src="lib/binaryheap.js"></script>
+    <!--<script src="lib/jquery-min.js"></script>-->
+    <script src="lib/leaflet/leaflet.js"></script>
+    <script src="map.js"></script>
     <script>
         var graph = {};
         var req = new XMLHttpRequest();
@@ -32,14 +44,23 @@
         }
 
         var loadGraph = function(callback_success) {
+            var date_start = new Date();
+
             print('Loading graph...');
-            req.open('GET', 'graph_zip.json');
+            req.open('GET', 'graph_zip_semi-mini.json');
             req.onreadystatechange = function(a) {
                 if( req.readyState == 4 ) {
                     if( req.status == 200) {
+                        var date_end = new Date();
+                        print('Graph loaded in ' + (date_end.getTime() - date_start.getTime())/1000);
                         print('Parsing graph...');
-                        graph = eval( '(' + req.responseText + ')');
-                        print('Graph loaded');
+                        setTimeout( function() {
+                            date_start = new Date();
+                            graph = eval( '(' + req.responseText + ')');
+                            date_end = new Date();
+                            print('Graph parsed in ' + (date_end.getTime() - date_start.getTime())/1000);
+                        }, 100);
+                             
                         callback_success();
                     }
                     else {
@@ -207,7 +228,14 @@
                         && edge.type != 4) { 
                         //console.log('Correspondance!');
                         //console.log('Edge dest id: ', edge.dest, ', Prev line :', previous[u_id].line, ', Edge line: ', edge.line, ', Edge type: ', edge.type);
-                        delta = 400; 
+                        if(edge.type == 3 && previous[u_id].type != 3) { //avg bus wait
+                            delta = 1000;
+                        }
+                        else
+                            delta = 500; //avg metro corresp + wait
+                    }
+                    else if( edge.type == 4 ) {
+                        delta = 300; //slow down walking
                     }
                     else { delta = 0; }
 
@@ -260,29 +288,66 @@
 
             //display path
             var disp = '';
-            var last_line = null;
+            var last_node = null;
             path.reverse();
             path.forEach( function(node, index) {
-                if(node.line !== last_line) {
-                    if(last_line !== null) {
-                        disp += ' => ' + graph[node.node_id].name + ' (' + node.node_id + ')<br>';
-                        if(node.line != -1) disp += 'Correspondance<br>';
+                if(index == 0) {
+                    disp += 'Line: ' + node.line + ', Type: ' + node.type + ', ';
+                    disp += graph[node.node_id].name;
+                }
+                //disp += graph[node.node_id].name
+                /*
+                if(last_node)
+                    disp += 'Last: ' + graph[last_node.node_id].name + ' (' + last_node.node_id + '), Line: ' + last_node.line + ', Type: ' + last_node.type + '<br>';
+
+                disp += 'Current: ' + graph[node.node_id].name + ' (' + node.node_id + '), Line: ' + node.line + ', Type: ' + node.type + '<br><br>';
+                */
+
+                if(last_node && 
+                    ( (last_node.line != node.line && last_node.type != 4)
+                        || (last_node.type != node.type 
+                            && (last_node.type != 2 && node.type != 2) 
+                            )
+                    ) 
+                  )
+                {
+                    disp += ' => ' + graph[node.node_id].name + '<br>';
+                    if(last_node.type/* == 4*/) {
+                        disp += 'Correspondance: ';
+                        disp += last_node.type + '<br>';
                     }
-                    if(node.line != -1 && node.type != 4) {
-                        disp += 'Line: ' + node.line + ', ' + graph[node.node_id].name + ' (' + node.node_id + ')';
-                    }
-                    if(node.type == 4) {
-                        disp += 'A pattes, ' + graph[node.node_id].name + ' (' + node.node_id + ')';
-                    }
+
+                    if(node.type != 4) disp += 'Line: ' + node.line + ', Type: ' + node.type;
+                    if(node.type == 4) disp += 'A pieds';
+                    
+                    disp += ', ' + graph[node.node_id].name;
+
                 }
 
-                last_line = node.line;
+/*
+                if(last_node && node.line !== last_node.line) {
+                    //if(last_line !== null) {
+                        disp += ' => ' + graph[last_node.node_id].name + ' (' + last_node.node_id + ')<br>';
+                        if(node.line != -1) disp += 'Correspondance<br>';
+                    //}
+                    //if(node.line != -1 && node.type != 4) {
+                        disp += 'Line: ' + node.line + ', ' + graph[node.node_id].name + ' (' + node.node_id + ')';
+                    //}
+                    //if(node.type == 4) {
+                        //disp += 'A pattes, ' + graph[node.node_id].name + ' (' + node.node_id + ')';
+                    //}
+                }
+*/
+                last_node = node;
                 //if(index > 0) disp += '-->';
                 //disp += graph[node.node_id].name + ' (' + node.node_id + ')';
                 //if(node.type == 4) { disp += ', a pattes'; }
                 //else if(node.line) { disp += ', line: ' + node.line; }
+                
             });
             print(disp);
+
+            return path;
         }
 
         var findPath = function() {
@@ -291,8 +356,14 @@
             var start_end_nodes  = {};
 
             console.log('Looking for ' + start_name + ' and ' + end_name + ' in graph...');
-            if(start_end_nodes = findNodes(start_name, end_name))
-                dijkstra(graph, start_end_nodes.start, start_end_nodes.end);
+            if(start_end_nodes = findNodes(start_name, end_name)) {
+                
+
+
+                var path = dijkstra(graph, start_end_nodes.start, start_end_nodes.end);
+                var ratp_map = new RATPMap();
+                ratp_map.showMapForPath(graph, path);
+            }
 
         }
 
