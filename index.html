@@ -1,5 +1,7 @@
 <html>
 <head>
+    <link rel="stylesheet" href="lib/bootstrap/css/bootstrap.css">
+    <link rel="stylesheet" href="lib/bootstrap/css/bootstrap-responsive.css">
     <link rel="stylesheet" href="lib/leaflet/leaflet.css">
     <style>
         #map {
@@ -13,11 +15,11 @@
     <form>
         <p>
             <label for="start">Start</label>
-            <input id="start" name="start" value="EGLISE D'AUTEUIL">
+            <input id="start" name="start" value="GARE DE BERCY - 75112 (Bus/Tramway)">
         </p>
         <p>
             <label for="end">End</label>
-            <input id="end" name="end" value="Bel-Air">
+            <input id="end" name="end" value="MINISTERE DE L'ECONOMIE ET DES FINANCES - 75112 (Bus/Tramway)">
         </p>
         <button type="button" id="find">Find</button>
     </form>
@@ -27,7 +29,8 @@
     <div id="map" class="map"></div>
 
     <script src="lib/binaryheap.js"></script>
-    <!--<script src="lib/jquery-min.js"></script>-->
+    <script src="lib/jquery-min.js"></script>
+    <script src="lib/bootstrap/js/bootstrap.js"></script>
     <script src="lib/leaflet/leaflet.js"></script>
     <script src="map.js"></script>
     <script>
@@ -47,7 +50,7 @@
             var date_start = new Date();
 
             print('Loading graph...');
-            req.open('GET', 'graph_zip_semi-mini.json');
+            req.open('GET', 'graph.json');
             req.onreadystatechange = function(a) {
                 if( req.readyState == 4 ) {
                     if( req.status == 200) {
@@ -59,9 +62,8 @@
                             graph = eval( '(' + req.responseText + ')');
                             date_end = new Date();
                             print('Graph parsed in ' + (date_end.getTime() - date_start.getTime())/1000);
+                            callback_success();
                         }, 100);
-                             
-                        callback_success();
                     }
                     else {
                         console.log(a);
@@ -99,13 +101,19 @@
         var findNodes = function(start_name, end_name) {
             var start_node_id = null;
             var end_node_id = null;
+            start_name = start_name.match(/(.*) -/)[1];
+            end_name = end_name.match(/(.*) -/)[1];
 
             for(var node_id in graph) {
-                var node = graph[node_id];
-                if(node.name == start_name) {
+                var node_name = graph[node_id].name;
+
+                //console.log(start_name);
+                //console.log(end_name);
+
+                if(node_name == start_name) {
                     start_node_id = node_id;
                 }
-                if(node.name == end_name) {
+                if(node_name == end_name) {
                     end_node_id = node_id;
                 }
             } 
@@ -126,11 +134,13 @@
         
 
         var each = function(obj, iterator, context) {
-            for(var key in Object.keys(obj)) {
+            for(var key in obj) {
+                //console.log(key);
+                //console.log(obj[key]);
                 iterator.call(context, obj[key], key, obj);
             }
         }
-/*
+
         var find = function(obj, iterator, context) {
             var results = [];
             each(obj, function(value, index, list) {
@@ -145,11 +155,11 @@
         var map = function(obj, iterator, context) {
             var results = [];
             each(obj, function(value, index, list) {
-                results.push(iterator.call(context, value, index, list);
+                results.push(iterator.call(context, value, index, list));
             });
             return results;
         }
-*/
+
 
 
 
@@ -170,6 +180,61 @@
             }
 
             return min_id;
+        }
+
+        var isEdgeOpen = function(edge) {
+            var now = new Date();
+            var now_h = now.getHours();
+            var now_m = now.getMinutes();
+
+            if( edge.type == 4 )
+                return true;
+
+            //noctilien
+            if( edge.line.indexOf('N') == 0 ) {
+                var temp = edge.begin;
+                edge.begin = edge.end;
+                edge.end = temp;
+            }
+
+            try {
+                var start_h = edge.begin.match(/(.*)h/)[1];
+                var start_m = edge.begin.match(/h(.*)/)[1];
+                var end_h = edge.end.match(/(.*)h/)[1];
+                var end_m = edge.end.match(/h(.*)/)[1];
+            }
+            catch(e) {
+                console.log('FAIL');
+                console.log(edge);
+                console.log(edge.begin.match(/(.*)h/));
+                console.log(edge.begin.match(/h(.*)/));
+                console.log(edge.end.match(/(.*)h/));
+                console.log(edge.end.match(/h(.*)/));
+                console.log('');
+            }
+
+            if( (start_h < now_h) && (now_h < end_h) ) {
+                return true;
+            }
+
+            else if( start_h == now_h ) {
+                if( start_m <= now_m ) {
+                    return true;
+                }
+            }
+
+            else if( end_h == now_h ) {
+                if( now_m <= end_m ) {
+                    return true;
+                }
+            }
+
+            console.log(graph[edge.dest].name + ', ' + edge.line + ', hours: ' + edge.begin + ' to ' + edge.end);
+            console.log('EDGE: ' + start_h + ', ' + end_h);
+            console.log('NOW: ' + now_h);
+            console.log((start_h < now_h) && (now_h < end_h));
+
+            return false;
         }
         
 
@@ -223,13 +288,14 @@
                 
                 //relax
                 graph[u_id].edges.forEach(function(edge) {
+                    //*** slow down correspondences ***
                     if( previous[u_id] 
                         && previous[u_id].line != edge.line
                         && edge.type != 4) { 
                         //console.log('Correspondance!');
                         //console.log('Edge dest id: ', edge.dest, ', Prev line :', previous[u_id].line, ', Edge line: ', edge.line, ', Edge type: ', edge.type);
                         if(edge.type == 3 && previous[u_id].type != 3) { //avg bus wait
-                            delta = 1000;
+                            delta = 500;
                         }
                         else
                             delta = 500; //avg metro corresp + wait
@@ -239,18 +305,20 @@
                     }
                     else { delta = 0; }
 
+
                     //SHOULD NOT HAPPEN, MEANS AN EDGE REFER TO AN UNKNOWN NODE (SEE init ABOVE)
                     if(dist[edge.dest] === undefined) {
-                        //console.log('WARNING, dist for ' + edge.dest + ' undefined');
+                        console.log('WARNING, graph[\'', edge.dest, '\'],', ' undefined');
+                        //dummy node
                         graph[edge.dest] = {
                             name: 'unknown',
                             edges: []
                         };
-                        Q.push( {id: edge.dest, dist: 10000} );
-                        dist[edge.dest] = 10000;
+                        Q.push( {id: edge.dest, dist: 10001} );
+                        dist[edge.dest] = -1;
                     }
                     
-                    else if( dist[edge.dest] > dist[u_id] + edge.dur + delta) {
+                    else if( dist[edge.dest] > dist[u_id] + edge.dur + delta ) {
                         /*
                         console.log(graph[start_id].name + '--' + dist[edge.dest] + '-->' 
                             + graph[edge.dest].name + ' > ' + graph[start_id].name 
@@ -260,13 +328,18 @@
 
                         //if( edge.line != )
 
-                        dist[edge.dest]             = dist[u_id] + edge.dur + delta;
-                        previous[edge.dest]         = {};
-                        previous[edge.dest].node_id = u_id;
-                        previous[edge.dest].line    = edge.line;
-                        previous[edge.dest].type    = edge.type;
-                        
-                        Q.decreaseKey(edge.dest, dist[edge.dest]);
+                        //if( isEdgeOpen(edge) ) {
+                            dist[edge.dest]             = dist[u_id] + edge.dur + delta;
+                            previous[edge.dest]         = {};
+                            previous[edge.dest].node_id = u_id;
+                            previous[edge.dest].line    = edge.line;
+                            previous[edge.dest].type    = edge.type;
+                            
+                            Q.decreaseKey(edge.dest, dist[edge.dest]);
+                        //}
+                        //else {
+                        //    console.log(graph[edge.dest].name + ' closed: ' + edge.begin + ' to ' + edge.end);
+                        //}
                     }
                 });
             }
@@ -274,7 +347,7 @@
             var date_end = new Date()
             print('Duree: ' + (date_end.getTime() - date_start.getTime())/1000);
 
-            print('Shortest path : ' + dist[end_id]);
+            print('Shortest path : ' + Math.floor(dist[end_id]/60) + ' minutes');
             
             //create path
             var path = [{node_id: end_id, line: -1}];
@@ -286,22 +359,17 @@
                 path.push(prev);
             }
 
+            path.reverse();
+/*
             //display path
             var disp = '';
             var last_node = null;
-            path.reverse();
+            
             path.forEach( function(node, index) {
                 if(index == 0) {
                     disp += 'Line: ' + node.line + ', Type: ' + node.type + ', ';
                     disp += graph[node.node_id].name;
                 }
-                //disp += graph[node.node_id].name
-                /*
-                if(last_node)
-                    disp += 'Last: ' + graph[last_node.node_id].name + ' (' + last_node.node_id + '), Line: ' + last_node.line + ', Type: ' + last_node.type + '<br>';
-
-                disp += 'Current: ' + graph[node.node_id].name + ' (' + node.node_id + '), Line: ' + node.line + ', Type: ' + node.type + '<br><br>';
-                */
 
                 if(last_node && 
                     ( (last_node.line != node.line && last_node.type != 4)
@@ -312,7 +380,7 @@
                   )
                 {
                     disp += ' => ' + graph[node.node_id].name + '<br>';
-                    if(last_node.type/* == 4*/) {
+                    if(last_node.type) {
                         disp += 'Correspondance: ';
                         disp += last_node.type + '<br>';
                     }
@@ -324,30 +392,12 @@
 
                 }
 
-/*
-                if(last_node && node.line !== last_node.line) {
-                    //if(last_line !== null) {
-                        disp += ' => ' + graph[last_node.node_id].name + ' (' + last_node.node_id + ')<br>';
-                        if(node.line != -1) disp += 'Correspondance<br>';
-                    //}
-                    //if(node.line != -1 && node.type != 4) {
-                        disp += 'Line: ' + node.line + ', ' + graph[node.node_id].name + ' (' + node.node_id + ')';
-                    //}
-                    //if(node.type == 4) {
-                        //disp += 'A pattes, ' + graph[node.node_id].name + ' (' + node.node_id + ')';
-                    //}
-                }
-*/
                 last_node = node;
-                //if(index > 0) disp += '-->';
-                //disp += graph[node.node_id].name + ' (' + node.node_id + ')';
-                //if(node.type == 4) { disp += ', a pattes'; }
-                //else if(node.line) { disp += ', line: ' + node.line; }
                 
-            });
-            print(disp);
+            });*/
+            //print(disp);
 
-            return path;
+            return {path: path, dist: dist};
         }
 
         var findPath = function() {
@@ -357,24 +407,83 @@
 
             console.log('Looking for ' + start_name + ' and ' + end_name + ' in graph...');
             if(start_end_nodes = findNodes(start_name, end_name)) {
-                
-
-
-                var path = dijkstra(graph, start_end_nodes.start, start_end_nodes.end);
-                var ratp_map = new RATPMap();
-                ratp_map.showMapForPath(graph, path);
+                var result = dijkstra(graph, start_end_nodes.start, start_end_nodes.end);
+                //var path = result.path;
+                print('Loading Map...');
+                setTimeout(function() {
+                    var date_start_2 = new Date();
+                    var ratp_map = new RATPMap();
+                    ratp_map.showMapForPath(graph, result.path, result.dist);
+                    print('Duree: ' + (new Date().getTime() - date_start_2.getTime())/1000);
+                }, 100);
             }
+        }
 
+
+        var autocomplete = function(e) {
+            var name = e.target.value;
+            if(name.length < 3) return;
+
+            console.log(name);
+
+            for(var node_id in graph) {
+                if(graph[node_id].name.indexOf(e.target.value) != -1)
+                    print(graph[node_id].name);
+            }
+            console.log(e);
+/*
+            for(var node_id in graph) {
+                var node = graph[node_id];
+                if(node.name == start_name) {
+                    start_node_id = node_id;
+                }
+                if(node.name == end_name) {
+                    end_node_id = node_id;
+                }
+            } 
+            */
         }
 
         var setListeners = function() {
             var button = document.getElementById('find');
             button.addEventListener('click', findPath);
+            //var start_input = document.getElementById('start');
+            //start_input.addEventListener('keypress', autocomplete);
+            var node_names = map(graph, function(node) { 
+                var result = node.name + ' - ' + node.zip;
+                if(result.toUpperCase() == result) result += " (Bus/Tramway)";
+                else result += " (Metro/RER)";
+                return result;
+            });
+
+            $('#start').typeahead({
+                source: node_names
+            });
+
+            $('#end').typeahead({
+                source: node_names
+            });
+            //console.log(map(graph, function(node) { return node.name; }));
+            //console.log(graph['1987']);
+            //var foo = graph['1987'];
+            //each(foo, function(prop) { console.log(prop); });
         }
+/*
+        each([1,2,3,4], function(number) {
+            console.log(number);
+        });
+*/
+        
+        //console.log(map([1,2,3,4], function(number) { number % 2 == 0; }).length);
+        //console.log(map([{id: 1, name: 2, truc: 3, foo: 4}], function(number) { return number.id; }));
+/*
+        var bar2 = [1, 2, 4, 5];
+        var bar = {id: 1, name: 2, truc: 3, foo: 4};
+        for(var key in Object.keys(bar2)) {
+            console.log(key);
+        }        */
 
-        setListeners();
-
-        loadGraph(function() {});
+        loadGraph(setListeners);
     </script>
 </body>
 </html>
