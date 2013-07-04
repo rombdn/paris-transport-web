@@ -16,10 +16,12 @@
         <p>
             <label for="start">Start</label>
             <input id="start" name="start" value="GARE DE BERCY - 75112 (Bus/Tramway)">
+            <input type="checkbox" id="start_use_loc" style="display: none;">
         </p>
         <p>
             <label for="end">End</label>
             <input id="end" name="end" value="MINISTERE DE L'ECONOMIE ET DES FINANCES - 75112 (Bus/Tramway)">
+            <input type="checkbox" id="end_use_loc" style="display: none;">
         </p>
         <button type="button" id="find">Find</button>
     </form>
@@ -29,6 +31,8 @@
     <div id="map" class="map"></div>
 
     <script src="lib/binaryheap.js"></script>
+    <script src="lib/haversine.js"></script>
+    <script src="lib/functional.js"></script>
     <script src="lib/jquery-min.js"></script>
     <script src="lib/bootstrap/js/bootstrap.js"></script>
     <script src="lib/leaflet/leaflet.js"></script>
@@ -36,6 +40,7 @@
     <script>
         var graph = {};
         var req = new XMLHttpRequest();
+        var user_loc = null;
 
         window.onerror = function(msg, url, line) {
             msg = 'Error at line ' + line + ': ' + msg + ' - ' + url;
@@ -50,7 +55,7 @@
             var date_start = new Date();
 
             print('Loading graph...');
-            req.open('GET', 'graph.json');
+            req.open('GET', 'graph-mini.json');
             req.onreadystatechange = function(a) {
                 if( req.readyState == 4 ) {
                     if( req.status == 200) {
@@ -98,73 +103,74 @@
             }
         }
 
-        var findNodes = function(start_name, end_name) {
-            var start_node_id = null;
-            var end_node_id = null;
-            start_name = start_name.match(/(.*) -/)[1];
-            end_name = end_name.match(/(.*) -/)[1];
+        var findNode = function(name) {
+            var result_id = null;
+            name = name.match(/(.*) -/)[1];
 
             for(var node_id in graph) {
                 var node_name = graph[node_id].name;
 
-                //console.log(start_name);
-                //console.log(end_name);
-
-                if(node_name == start_name) {
-                    start_node_id = node_id;
-                }
-                if(node_name == end_name) {
-                    end_node_id = node_id;
+                if(node_name == name) {
+                    result_id = node_id;
+                    break;
                 }
             } 
 
-            if( start_node_id && end_node_id ) {
-                return {start: start_node_id, end: end_node_id};
-            }
-            else {
-                if( !start_node_id) {
-                    print('start not found');
-                }
-                if( !end_node_id)
-                    print('end not found');
+            if(result_id) return result_id;
 
-                return false;
-            }       
-        }
-        
-
-        var each = function(obj, iterator, context) {
-            for(var key in obj) {
-                //console.log(key);
-                //console.log(obj[key]);
-                iterator.call(context, obj[key], key, obj);
-            }
+            console.log('Unable to find ' + name + ' in graph');
+            return null;     
         }
 
-        var find = function(obj, iterator, context) {
+        var locSuccess = function(position) {
+            user_loc = {lat: position.coords.latitude, lon: position.coords.longitude};
+            document.getElementById('start_use_loc').style.display = 'block';
+            document.getElementById('end_use_loc').style.display = 'block';
+        }
+
+        var findNodesWithinRadius = function(graph, loc, radius) {
+            var d;
             var results = [];
-            each(obj, function(value, index, list) {
-                if( iterator.call(context, value, index, list )) {
-                    results.push(value)
-                    return true;
+            var temp = 0;
+
+            for(var id in graph) {
+                d = getDistanceFromLatLonInM(loc.lat, loc.lon, graph[id].loc.lat, graph[id].loc.lon);
+                if( d < radius ) {
+                    //console.log(id + ': ' + graph[id].name);
+                    results.push({id: id, dist: d});
                 }
-            });
-            return results;
+            }
+            return results;       
         }
 
-        var map = function(obj, iterator, context) {
-            var results = [];
-            each(obj, function(value, index, list) {
-                results.push(iterator.call(context, value, index, list));
+        var addUserToGraph = function(graph, user_loc) {
+            var prox_nodes = findNodesWithinRadius(graph, user_loc, 1000);
+            var user_edges = [];
+
+            prox_nodes.forEach( function(node) {
+                user_edges.push({
+                    "dest": node.id,
+                    "dur" : node.dist / 1.1, //4Km/h = 1.1m/s
+                    "type": 4
+                });
+
+                graph[node.id].edges.push({
+                    "dest": 'user',
+                    "dur": node.dist / 1.1,
+                    "type": 4
+                });
             });
-            return results;
+
+            //add user node
+            graph['user'] = {
+                name: 'User',
+                loc: {
+                    lat: user_loc.lat,
+                    lon: user_loc.lon
+                },
+                edges: user_edges
+            }
         }
-
-
-
-
-
-
 
         var find_min = function(graph, nodes_processed, dist) {
             var min = 10000;
@@ -275,8 +281,6 @@
             while( Q.size() > 0 ) {
                 //find min
                 u = Q.pop();
-                //console.log('Popped node :');
-                //console.log(u);
                 u_id = u.id;
                 //dist[u_id] = u.dist; //in init?
 
@@ -288,6 +292,7 @@
                 
                 //relax
                 graph[u_id].edges.forEach(function(edge) {
+
                     //*** slow down correspondences ***
                     if( previous[u_id] 
                         && previous[u_id].line != edge.line
@@ -305,17 +310,25 @@
                     }
                     else { delta = 0; }
 
+/*
+                    if( u.id == 'user' ) {
+                        console.log('Current Edge: ' + graph[edge.dest].name, ', ', dist[edge.dest], ' > ', dist[u_id],
+                            ' + ', edge.dur,
+                            ' + ', delta,
+                            dist[edge.dest] > edge.dur + delta);
+                        //console.log(u);
+                    }*/
 
                     //SHOULD NOT HAPPEN, MEANS AN EDGE REFER TO AN UNKNOWN NODE (SEE init ABOVE)
                     if(dist[edge.dest] === undefined) {
-                        console.log('WARNING, graph[\'', edge.dest, '\'],', ' undefined');
+                        console.log('WARNING, graph[\'', edge.dest, '\'],', ' refers to an unknown node');
                         //dummy node
                         graph[edge.dest] = {
                             name: 'unknown',
                             edges: []
                         };
                         Q.push( {id: edge.dest, dist: 10001} );
-                        dist[edge.dest] = -1;
+                        dist[edge.dest] = -1; //ensure the test below will never pass, so this edge cannot be selected
                     }
                     
                     else if( dist[edge.dest] > dist[u_id] + edge.dur + delta ) {
@@ -329,6 +342,7 @@
                         //if( edge.line != )
 
                         //if( isEdgeOpen(edge) ) {
+                        if( !edge.line || edge.line.indexOf('N') != 0) { //get rid of noctilien (just after midnight?)
                             dist[edge.dest]             = dist[u_id] + edge.dur + delta;
                             previous[edge.dest]         = {};
                             previous[edge.dest].node_id = u_id;
@@ -336,6 +350,7 @@
                             previous[edge.dest].type    = edge.type;
                             
                             Q.decreaseKey(edge.dest, dist[edge.dest]);
+                        }
                         //}
                         //else {
                         //    console.log(graph[edge.dest].name + ' closed: ' + edge.begin + ' to ' + edge.end);
@@ -360,7 +375,7 @@
             }
 
             path.reverse();
-/*
+
             //display path
             var disp = '';
             var last_node = null;
@@ -394,8 +409,8 @@
 
                 last_node = node;
                 
-            });*/
-            //print(disp);
+            });
+            print(disp);
 
             return {path: path, dist: dist};
         }
@@ -403,20 +418,41 @@
         var findPath = function() {
             var start_name   = document.getElementById('start').value;
             var end_name     = document.getElementById('end').value;
-            var start_end_nodes  = {};
+            var use_start_loc     = document.getElementById('start_use_loc').checked;
+            var use_end_loc     = document.getElementById('end_use_loc').checked;
+            var start_id     = null;
+            var end_id       = null;
 
-            console.log('Looking for ' + start_name + ' and ' + end_name + ' in graph...');
-            if(start_end_nodes = findNodes(start_name, end_name)) {
-                var result = dijkstra(graph, start_end_nodes.start, start_end_nodes.end);
-                //var path = result.path;
-                print('Loading Map...');
-                setTimeout(function() {
-                    var date_start_2 = new Date();
-                    var ratp_map = new RATPMap();
-                    ratp_map.showMapForPath(graph, result.path, result.dist);
-                    print('Duree: ' + (new Date().getTime() - date_start_2.getTime())/1000);
-                }, 100);
+            //user_loc = {lat: 48.837153, lon: 2.391365}; //DEBUG
+            addUserToGraph(graph, user_loc);
+            
+            console.log(use_start_loc);
+            console.log(use_end_loc);
+
+            if( use_start_loc ) {
+                start_id = 'user';
+                end_id = findNode(end_name);
             }
+            else if( use_end_loc ) {
+                start_id = findNode(start_name);
+                end_id = 'user';
+            }
+            else {
+                start_id = findNode(start_name);
+                end_id = findNode(end_name);
+            }
+
+            console.log('Shortest path from ' + graph[start_id].name + ' to ' + graph[end_id].name + ' in graph...');
+
+            var result = dijkstra(graph, start_id, end_id);
+            //var path = result.path;
+            print('Loading Map...');
+            setTimeout(function() {
+                var date_start_2 = new Date();
+                var ratp_map = new RATPMap();
+                ratp_map.showMapForPath(graph, result.path, result.dist);
+                print('Duree: ' + (new Date().getTime() - date_start_2.getTime())/1000);
+            }, 100);
         }
 
 
@@ -463,6 +499,7 @@
             $('#end').typeahead({
                 source: node_names
             });
+
             //console.log(map(graph, function(node) { return node.name; }));
             //console.log(graph['1987']);
             //var foo = graph['1987'];
@@ -482,6 +519,12 @@
         for(var key in Object.keys(bar2)) {
             console.log(key);
         }        */
+
+        navigator.geolocation.getCurrentPosition(
+            locSuccess, 
+            function() { console.log('Unbale to locate'); print('Unbale to locate'); },
+            { timeout: 2000 }
+        );
 
         loadGraph(setListeners);
     </script>

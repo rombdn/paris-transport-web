@@ -1,25 +1,3 @@
-var Module = function() {
-    this.x = 10;
-    this.damap = L.map('map').setView([48.85293755, 2.35005223818182], 12);
-    this.tileLayer = L.tileLayer(
-        //'http://{s}.tile.stamen.com/watercolor/{z}/{x}/{y}.jpg',
-        //'http://a.tile.openstreetmap.org/$%7Bz%7D/$%7Bx%7D/$%7By%7D.png',
-        'http://{s}.tile.osm.org/{z}/{x}/{y}.png',
-        {
-            attribution: '&copy; OpenStreetMap'
-        }
-    );
-    this.damap.addLayer(this.tileLayer); 
-    //this.getX = this.getX.bind(this);
-};
-
-Module.prototype = {
-    getX: function() { console.log(this.x); },
-    showMapForPath: function(graph, path) { console.log(this); }
-};
-
-
-
 var RATPMap = function() {
     this.damap = L.map('map').setView([48.85293755, 2.35005223818182], 12);
 
@@ -33,8 +11,9 @@ var RATPMap = function() {
     );
 
     this.damap.addLayer(this.tileLayer);
-    //this.showMapForPath = function() { console.log(this); };
     this.showMapForPath = this.showMapForPath.bind(this);
+
+    //this.locate({setView: true})
 };
 
 RATPMap.prototype = {
@@ -151,8 +130,9 @@ RATPMap.prototype = {
                     msg += ' => ' + graph[node.node_id].name + ' (' + node.node_id + ', ' + node.line +  ', ' +  node.type +  ')<br>';
                     
                     marker = null;
-
-                    if( last_node.type != 4 ) {
+                    console.log('');
+                    console.log(last_node.line);
+                    if( last_node.type != 4 || node.line == -1 ) {
                         //end of line marker
                         marker = L.marker(node_loc);
                         content = 'Line: ' + last_node.line + ', Type: ' + last_node.type + ', ';
@@ -185,7 +165,7 @@ RATPMap.prototype = {
                             msg += 'A pieds';
                         }
 
-                        msg += ', ' + graph[node.node_id].name + ' (' + node.line +  ', ' +  node.type +  ')';
+                        msg += ', ' + graph[node.node_id].name + ' (' + node.node_id + ', ' + node.line +  ', ' +  node.type +  ')';
                     }
                     /*
                     console.log(' => ', graph[last_node.node_id].name, 
