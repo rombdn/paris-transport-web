@@ -130,8 +130,8 @@ RATPMap.prototype = {
                     msg += ' => ' + graph[node.node_id].name + ' (' + node.node_id + ', ' + node.line +  ', ' +  node.type +  ')<br>';
                     
                     marker = null;
-                    console.log('');
-                    console.log(last_node.line);
+                    //console.log('');
+                    //console.log(last_node.line);
                     if( last_node.type != 4 || node.line == -1 ) {
                         //end of line marker
                         marker = L.marker(node_loc);
