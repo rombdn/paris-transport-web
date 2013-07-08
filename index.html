@@ -57,7 +57,7 @@
             var date_start = new Date();
 
             print('Loading graph...');
-            req.open('GET', 'graph_sub.json');
+            req.open('GET', 'graph_times.json');
             req.onreadystatechange = function(a) {
                 if( req.readyState == 4 ) {
                     if( req.status == 200) {
@@ -108,14 +108,17 @@
             }
         }
 
-        var findNode = function(name) {
+        var findNode = function(name_with_zip) {
             var result_id = null;
-            name = name.match(/(.*) -/)[1];
+            var name = name_with_zip.match(/(.*) -/)[1];
+            var zip = name_with_zip.match(/[0-9]{5}/)[0];
+
 
             for(var node_id in graph) {
                 var node_name = graph[node_id].name;
+                var node_zip = graph[node_id].zip;
 
-                if(node_name == name) {
+                if(node_name == name && node_zip == zip) {
                     result_id = node_id;
                     break;
                 }
